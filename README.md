@@ -15,10 +15,8 @@ data dynamically.
 
 ## Reading Assignment
 
--   [7.3 Creating RESTful Web APIs
-    (Node)](https://learn.zybooks.com/zybook/SWE363Fall2025/chapter/7/section/3)
--   [7.4 Using RESTful Web APIs with
-    Fetch](https://learn.zybooks.com/zybook/SWE363Fall2025/chapter/7/section/4)
+-   7.3 Creating RESTful Web APIs (Node)
+-   7.4 Using RESTful Web APIs with Fetch
 
 ------------------------------------------------------------------------
 
