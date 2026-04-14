@@ -335,8 +335,11 @@ function failTask(task, reason) {
         ok: /mongoose\.connect\s*\(/i.test(dbCode),
       },
       {
-        label: "Uses process.env.MONGO_URL",
-        ok: /process\.env\.MONGO_URL/i.test(dbCode),
+        label: "Uses MONGO_URL directly or receives it as parameter",
+        ok:
+          /mongoose\.connect\s*\(\s*process\.env\.MONGO_URL\s*\)/i.test(dbCode) ||
+          (/export\s+async\s+function\s+connectDB\s*\(\s*url\s*\)/i.test(dbCode) &&
+           /mongoose\.connect\s*\(\s*url\s*\)/i.test(dbCode)),
       },
       {
         label: 'Logs success message like "Mongo connected"',
@@ -424,7 +427,11 @@ function failTask(task, reason) {
       },
       {
         label: "Exports Song model",
-        ok: /export\s+default\s+Song/i.test(modelCode) || /module\.exports\s*=\s*Song/i.test(modelCode),
+        ok:
+          /export\s+default\s+Song/i.test(modelCode) ||
+          /module\.exports\s*=\s*Song/i.test(modelCode) ||
+          /export\s+const\s+Song\s*=\s*mongoose\.model\s*\(/i.test(modelCode) ||
+          /export\s+\{\s*Song\s*\}/i.test(modelCode),
       },
     ];
 
