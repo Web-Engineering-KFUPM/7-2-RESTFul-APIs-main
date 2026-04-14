@@ -242,7 +242,7 @@ export default function App() {
     setSaving(true);
     try {
       const upd = await apiUpdateSong(id, payload);
-      setSongs((arr) => arr.map(s => s.id === id ? upd : s));
+      setSongs((arr) => arr.map((s) => (s._id === id ? upd : s)));
       setEditingId(null);
       setEditingSong(null);
       showToast("Saved.");
@@ -257,7 +257,7 @@ export default function App() {
     if (!confirm("Delete this song?")) return;
     try {
       await apiDeleteSong(id);
-      setSongs((arr) => arr.filter(s => s.id !== id));
+      setSongs((arr) => arr.filter((s) => s._id !== id));
       showToast("Deleted.");
     } catch (e) {
       showToast(e.message, "error");

@@ -4,7 +4,6 @@
  * Lab Autograder — 7-2 RESTFul API
  *
  * Grades based on:
- * - server/.env
  * - server/db.js
  * - server/server.js
  * - server/models/song.model.js
@@ -23,7 +22,6 @@
  * - app folder:     7-2-RESTFul-APIs-main/7-2-restful-api/
  * - grader file:    anywhere inside repo
  * - student files:
- *      7-2-restful-api/server/.env
  *      7-2-restful-api/server/db.js
  *      7-2-restful-api/server/server.js
  *      7-2-restful-api/server/models/song.model.js
@@ -32,6 +30,7 @@
  * - JS comments are ignored, so starter TODO comments do NOT count.
  * - Checks are intentionally lenient and verify top-level implementation only.
  * - Code can be in any order.
+ * - server/.env is intentionally excluded from grading.
  */
 
 const fs = require("fs");
@@ -57,13 +56,13 @@ const SUBMISSION_LATE = 10;
    TODO marks (out of 80)
 -------------------------------- */
 const tasks = [
-  { id: "t1", name: "TODO 1: MongoDB connection string in server/.env", marks: 8 },
-  { id: "t2", name: "TODO 2: Import dotenv and load environment", marks: 6 },
-  { id: "t3", name: "TASK 2: Create Song schema and model", marks: 14 },
-  { id: "t4", name: "TODO 3: POST /api/songs", marks: 13 },
-  { id: "t5", name: "TODO 4: GET /api/songs and GET /api/songs/:id", marks: 13 },
-  { id: "t6", name: "TODO 5: PUT /api/songs/:id", marks: 13 },
-  { id: "t7", name: "TODO 6: DELETE /api/songs/:id", marks: 13 },
+  { id: "t1", name: "TODO 1: MongoDB connection in server/db.js", marks: 12 },
+  { id: "t2", name: "TODO 2: Import dotenv and load environment", marks: 8 },
+  { id: "t3", name: "TASK 2: Create Song schema and model", marks: 16 },
+  { id: "t4", name: "TODO 3: POST /api/songs", marks: 14 },
+  { id: "t5", name: "TODO 4: GET /api/songs and GET /api/songs/:id", marks: 10 },
+  { id: "t6", name: "TODO 5: PUT /api/songs/:id", marks: 10 },
+  { id: "t7", name: "TODO 6: DELETE /api/songs/:id", marks: 10 },
 ];
 
 const STEPS_MAX = tasks.reduce((sum, t) => sum + t.marks, 0); // 80
@@ -109,10 +108,6 @@ function existsDir(p) {
   } catch {
     return false;
   }
-}
-
-function hasAny(text, patterns) {
-  return patterns.some((p) => p.test(text));
 }
 
 /**
@@ -256,7 +251,6 @@ const PROJECT_ROOT = pickProjectRoot(REPO_ROOT);
    Find files
 -------------------------------- */
 const serverDir = path.join(PROJECT_ROOT, "server");
-const envFile = path.join(serverDir, ".env");
 const dbFile = path.join(serverDir, "db.js");
 const serverFile = path.join(serverDir, "server.js");
 const modelFile = path.join(serverDir, "models", "song.model.js");
@@ -284,17 +278,13 @@ const submissionScore = isLate ? SUBMISSION_LATE : SUBMISSION_MAX;
 /* -----------------------------
    Load & strip student files
 -------------------------------- */
-const envRaw = existsFile(envFile) ? safeRead(envFile) : null;
 const dbRaw = existsFile(dbFile) ? safeRead(dbFile) : null;
 const serverRaw = existsFile(serverFile) ? safeRead(serverFile) : null;
 const modelRaw = existsFile(modelFile) ? safeRead(modelFile) : null;
 
-const envCode = envRaw || null;
 const dbCode = dbRaw ? stripJsComments(dbRaw) : null;
 const serverCode = serverRaw ? stripJsComments(serverRaw) : null;
 const modelCode = modelRaw ? stripJsComments(modelRaw) : null;
-
-const combinedCode = [dbCode || "", serverCode || "", modelCode || ""].join("\n\n");
 
 const results = [];
 
@@ -327,30 +317,34 @@ function failTask(task, reason) {
 }
 
 /* -----------------------------
-   Grade TODO 1 — .env connection string
+   Grade TODO 1 — MongoDB connection in db.js
 -------------------------------- */
 {
   const task = tasks[0];
 
-  if (!envCode) {
-    failTask(task, "server/.env not found / unreadable.");
+  if (!dbCode) {
+    failTask(task, "server/db.js not found / unreadable.");
   } else {
     const required = [
       {
-        label: "server/.env file exists",
-        ok: existsFile(envFile),
+        label: 'Imports mongoose using import mongoose from "mongoose"',
+        ok: /import\s+mongoose\s+from\s+['"]mongoose['"]/i.test(dbCode),
       },
       {
-        label: "Defines MONGO_URL variable",
-        ok: /^\s*MONGO_URL\s*=/m.test(envCode),
+        label: "Calls mongoose.connect(...)",
+        ok: /mongoose\.connect\s*\(/i.test(dbCode),
       },
       {
-        label: "MONGO_URL is assigned a non-empty value",
-        ok: /^\s*MONGO_URL\s*=\s*.+$/m.test(envCode),
+        label: "Uses process.env.MONGO_URL",
+        ok: /process\.env\.MONGO_URL/i.test(dbCode),
       },
       {
-        label: "Assigned value looks like a MongoDB connection string",
-        ok: /MONGO_URL\s*=\s*.*mongodb(?:\+srv)?:\/\//i.test(envCode),
+        label: 'Logs success message like "Mongo connected"',
+        ok: /Mongo connected/i.test(dbCode),
+      },
+      {
+        label: 'Logs connection error message',
+        ok: /Connection error:/i.test(dbCode) || /console\.error\s*\(/i.test(dbCode),
       },
     ];
 
@@ -630,7 +624,6 @@ ${submissionLine}
 - Repo root (cwd): ${REPO_ROOT}
 - Detected project root: ${PROJECT_ROOT}
 - Server directory: ${existsDir(serverDir) ? `✅ ${serverDir}` : "❌ server folder not found"}
-- .env: ${existsFile(envFile) ? `✅ ${envFile}` : "❌ server/.env not found"}
 - db.js: ${existsFile(dbFile) ? `✅ ${dbFile}` : "❌ server/db.js not found"}
 - server.js: ${existsFile(serverFile) ? `✅ ${serverFile}` : "❌ server/server.js not found"}
 - song.model.js: ${existsFile(modelFile) ? `✅ ${modelFile}` : "❌ server/models/song.model.js not found"}
@@ -698,7 +691,6 @@ ${submissionLine}
 - Repo root (cwd): ${REPO_ROOT}
 - Detected project root: ${PROJECT_ROOT}
 - Server directory: ${existsDir(serverDir) ? `✅ ${serverDir}` : "❌ server folder not found"}
-- .env: ${existsFile(envFile) ? `✅ ${envFile}` : "❌ server/.env not found"}
 - db.js: ${existsFile(dbFile) ? `✅ ${dbFile}` : "❌ server/db.js not found"}
 - server.js: ${existsFile(serverFile) ? `✅ ${serverFile}` : "❌ server/server.js not found"}
 - song.model.js: ${existsFile(modelFile) ? `✅ ${modelFile}` : "❌ server/models/song.model.js not found"}
@@ -726,8 +718,8 @@ feedback += `
 ## How marks were deducted (rules)
 
 - JS comments are ignored, so starter TODO comments do NOT count.
-- The grader checks \`.env\`, \`db.js\`, \`server.js\`, and \`server/models/song.model.js\`.
-- The MongoDB connection string in \`.env\` is checked only for assignment/presence, not for exact student value.
+- The grader checks \`db.js\`, \`server.js\`, and \`server/models/song.model.js\`.
+- \`.env\` is intentionally excluded from grading.
 - Checks are intentionally lenient and verify top-level implementation only.
 - Code can be in ANY order; repeated code is allowed.
 - Common equivalents are accepted where possible.
