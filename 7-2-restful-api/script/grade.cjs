@@ -1,874 +1,756 @@
 #!/usr/bin/env node
+
 /**
- * SWE 363 – Lab 7-2 RESTful APIs
- * Auto-grading script (grade.cjs)
+ * Lab Autograder — 7-2 RESTFul API
  *
- * - Checks:
- *    • Submission timing (20 marks: on-time vs late)
- *    • TODO 1–6 implementation in:
- *        - server/.env
- *        - server/index.js
- *        - server/models/song.model.js
- * - Scoring:
- *    • Submission: 20 marks (20 if on-time, 10 if late)
- *    • Implementation: 80 marks total
- *        - TODO 1–5: 14 marks each  (5 completeness, 5 correctness, 4 quality)
- *        - TODO 6:   10 marks       (4 completeness, 3 correctness, 3 quality)
+ * Grades based on:
+ * - server/.env
+ * - server/db.js
+ * - server/server.js
+ * - server/models/song.model.js
  *
- * Flexible rules:
- *   - If NO task is implemented → 0/80 (implementation)
- *   - If ALL tasks are fully correct → 80/80
- *   - If AT LEAST one task is attempted but raw total < 50 → bump to 50/80
+ * Marking:
+ * - 80 marks for lab TODOs
+ * - 20 marks for submission timing
+ *   - On/before deadline => 20/20
+ *   - After deadline     => 10/20
  *
- * A detailed breakdown is printed to stdout and, if running in
- * GitHub Actions, also written to the job summary ($GITHUB_STEP_SUMMARY).
+ * Deadline: 15 Apr 2026 20:59 (Asia/Riyadh, UTC+03:00)
+ *
+ * Expected repo layout:
+ * - repo root may be the project itself OR may contain the project folder
+ * - project folder: 7-2-RESTFul-APIs-main/
+ * - app folder:     7-2-RESTFul-APIs-main/7-2-restful-api/
+ * - grader file:    anywhere inside repo
+ * - student files:
+ *      7-2-restful-api/server/.env
+ *      7-2-restful-api/server/db.js
+ *      7-2-restful-api/server/server.js
+ *      7-2-restful-api/server/models/song.model.js
+ *
+ * Notes:
+ * - JS comments are ignored, so starter TODO comments do NOT count.
+ * - Checks are intentionally lenient and verify top-level implementation only.
+ * - Code can be in any order.
  */
 
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
 
-// ------------------------
-//  Helpers
-// ------------------------
+const ARTIFACTS_DIR = "artifacts";
+const FEEDBACK_DIR = path.join(ARTIFACTS_DIR, "feedback");
+fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
 
+/* -----------------------------
+   Deadline (Asia/Riyadh)
+   15 Apr 2026, 20:59
+-------------------------------- */
+const DEADLINE_RIYADH_ISO = "2026-04-15T20:59:00+03:00";
+const DEADLINE_MS = Date.parse(DEADLINE_RIYADH_ISO);
+
+// Submission marks policy
+const SUBMISSION_MAX = 20;
+const SUBMISSION_LATE = 10;
+
+/* -----------------------------
+   TODO marks (out of 80)
+-------------------------------- */
+const tasks = [
+  { id: "t1", name: "TODO 1: MongoDB connection string in server/.env", marks: 8 },
+  { id: "t2", name: "TODO 2: Import dotenv and load environment", marks: 6 },
+  { id: "t3", name: "TASK 2: Create Song schema and model", marks: 14 },
+  { id: "t4", name: "TODO 3: POST /api/songs", marks: 13 },
+  { id: "t5", name: "TODO 4: GET /api/songs and GET /api/songs/:id", marks: 13 },
+  { id: "t6", name: "TODO 5: PUT /api/songs/:id", marks: 13 },
+  { id: "t7", name: "TODO 6: DELETE /api/songs/:id", marks: 13 },
+];
+
+const STEPS_MAX = tasks.reduce((sum, t) => sum + t.marks, 0); // 80
+const TOTAL_MAX = STEPS_MAX + SUBMISSION_MAX; // 100
+
+/* -----------------------------
+   Helpers
+-------------------------------- */
 function safeRead(filePath) {
-    try {
-        return fs.readFileSync(filePath, "utf8");
-    } catch (_err) {
-        return null;
-    }
-}
-
-function getEventTimestamp() {
-    try {
-        const eventPath = process.env.GITHUB_EVENT_PATH;
-        if (!eventPath || !fs.existsSync(eventPath)) return null;
-        const raw = fs.readFileSync(eventPath, "utf8");
-        const evt = JSON.parse(raw);
-
-        if (evt.head_commit && evt.head_commit.timestamp) {
-            return new Date(evt.head_commit.timestamp);
-        }
-        if (evt.pull_request && evt.pull_request.updated_at) {
-            return new Date(evt.pull_request.updated_at);
-        }
-        if (evt.workflow_run && evt.workflow_run.created_at) {
-            return new Date(evt.workflow_run.created_at);
-        }
-        if (evt.repository && evt.repository.pushed_at) {
-            return new Date(evt.repository.pushed_at);
-        }
-    } catch (_err) {
-        return null;
-    }
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
     return null;
+  }
 }
 
-function computeSubmissionMarks() {
-    const dueStr = process.env.LAB_DUE_DATE; // ISO date string, set in workflow
-    const result = {
-        score: 20,
-        max: 20,
-        onTime: true,
-        reason: "",
-    };
-
-    if (!dueStr) {
-        result.score = 20;
-        result.onTime = true;
-        result.reason =
-            "LAB_DUE_DATE not configured – awarding full 20/20 submission marks by default.";
-        return result;
-    }
-
-    const dueDate = new Date(dueStr);
-    const evtTime = getEventTimestamp();
-
-    if (!evtTime || Number.isNaN(dueDate.getTime())) {
-        result.score = 20;
-        result.onTime = true;
-        result.reason =
-            "Unable to determine submission time or parse due date – awarding full 20/20 submission marks.";
-        return result;
-    }
-
-    if (evtTime <= dueDate) {
-        result.score = 20;
-        result.onTime = true;
-        result.reason = `Submission time (${evtTime.toISOString()}) is on or before due date (${dueDate.toISOString()}).`;
-    } else {
-        result.score = 10;
-        result.onTime = false;
-        result.reason = `Submission time (${evtTime.toISOString()}) is AFTER due date (${dueDate.toISOString()}) – late submission penalty applied.`;
-    }
-
-    return result;
+function mdEscape(s) {
+  return String(s).replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function clamp(num, min, max) {
-    return Math.max(min, Math.min(max, num));
+function round2(n) {
+  return Math.round(n * 100) / 100;
 }
 
-// ------------------------
-//  Paths
-// ------------------------
+function splitMarks(stepMarks, missingCount, totalChecks) {
+  if (missingCount <= 0) return stepMarks;
+  const perItem = stepMarks / totalChecks;
+  const deducted = perItem * missingCount;
+  return Math.max(0, round2(stepMarks - deducted));
+}
 
-const LAB_ROOT = path.join(__dirname, ".."); // 7-2-restful-api
-const SERVER_DIR = path.join(LAB_ROOT, "server");
-const INDEX_FILE = path.join(SERVER_DIR, "index.js");
-const MODEL_FILE = path.join(SERVER_DIR, "models", "song.model.js");
-const ENV_FILE = path.join(SERVER_DIR, ".env");
+function existsFile(p) {
+  try {
+    return fs.existsSync(p) && fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
 
-// ------------------------
-//  Read source files
-// ------------------------
+function existsDir(p) {
+  try {
+    return fs.existsSync(p) && fs.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
 
-const indexCode = safeRead(INDEX_FILE) || "";
-const envContent = safeRead(ENV_FILE) || "";
+function hasAny(text, patterns) {
+  return patterns.some((p) => p.test(text));
+}
 
-// ------------------------
-//  Initialize report
-// ------------------------
+/**
+ * Strip JS comments while trying to preserve strings/templates.
+ */
+function stripJsComments(code) {
+  if (!code) return code;
 
-const report = {
-    submission: null,
-    tasks: [],
-    implementationRaw: 0,
-    implementationAdjusted: 0,
-    implementationMax: 80,
-    total: 0,
-    totalMax: 100,
-    attemptedTasks: 0,
-    fullyCorrectTasks: 0,
-};
+  let out = "";
+  let i = 0;
 
-// ------------------------
-//  Grade TODO 1
-// ------------------------
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
 
-function gradeTodo1() {
-  const task = {
-    id: 1,
-    label: "TODO 1 – MongoDB connection logic",
-    max: 14,
-    completeness: 0,
-    correctness: 0,
-    quality: 0,
-    score: 0,
-    details: [],
-  };
+  while (i < code.length) {
+    const ch = code[i];
+    const next = code[i + 1];
 
-  // --- New detection logic (no .env / mongoose.connect requirement) ---
-  const usesMongooseConnect = /mongoose\.connect\s*\(/.test(indexCode);
-  const usesConnectDB = /connectDB\s*\(/.test(indexCode);
-  const usesProcessEnv = /process\.env\./.test(indexCode);
+    if (!inDouble && !inTemplate && ch === "'" && !inSingle) {
+      inSingle = true;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (inSingle && ch === "'") {
+      let backslashes = 0;
+      for (let k = i - 1; k >= 0 && code[k] === "\\"; k--) backslashes++;
+      if (backslashes % 2 === 0) inSingle = false;
+      out += ch;
+      i++;
+      continue;
+    }
 
-  const hasTryCatch = /try\s*{[\s\S]*(?:mongoose\.connect|connectDB)[\s\S]*}\s*catch\s*\(/.test(
-    indexCode
-  );
+    if (!inSingle && !inTemplate && ch === '"' && !inDouble) {
+      inDouble = true;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (inDouble && ch === '"') {
+      let backslashes = 0;
+      for (let k = i - 1; k >= 0 && code[k] === "\\"; k--) backslashes++;
+      if (backslashes % 2 === 0) inDouble = false;
+      out += ch;
+      i++;
+      continue;
+    }
 
-  const logsSuccess = /Mongo connected/i.test(indexCode);
-  const logsError = /Connection error/i.test(indexCode);
+    if (!inSingle && !inDouble && ch === "`" && !inTemplate) {
+      inTemplate = true;
+      out += ch;
+      i++;
+      continue;
+    }
+    if (inTemplate && ch === "`") {
+      let backslashes = 0;
+      for (let k = i - 1; k >= 0 && code[k] === "\\"; k--) backslashes++;
+      if (backslashes % 2 === 0) inTemplate = false;
+      out += ch;
+      i++;
+      continue;
+    }
 
-  // -----------------------
-  // Completeness (5 marks)
-  // -----------------------
-  let c = 0;
+    if (!inSingle && !inDouble && !inTemplate) {
+      if (ch === "/" && next === "/") {
+        i += 2;
+        while (i < code.length && code[i] !== "\n") i++;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        i += 2;
+        while (i < code.length) {
+          if (code[i] === "*" && code[i + 1] === "/") {
+            i += 2;
+            break;
+          }
+          i++;
+        }
+        continue;
+      }
+    }
 
-  if (usesMongooseConnect || usesConnectDB) {
-    c += 3;
-    task.details.push(
-      "MongoDB connection call found (mongoose.connect or connectDB)."
+    out += ch;
+    i++;
+  }
+
+  return out;
+}
+
+/* -----------------------------
+   Project root detection
+-------------------------------- */
+const REPO_ROOT = process.cwd();
+
+function isAppFolder(p) {
+  try {
+    return (
+      existsDir(path.join(p, "client")) &&
+      existsDir(path.join(p, "server")) &&
+      existsFile(path.join(p, "server", "server.js"))
     );
-  } else {
-    task.details.push("No MongoDB connection function found in index.js.");
+  } catch {
+    return false;
   }
-
-  if (usesProcessEnv) {
-    c += 2;
-    task.details.push("Uses environment variables via process.env (good practice).");
-  } else {
-    task.details.push("process.env usage not detected in connection code.");
-  }
-
-  c = Math.min(c, 5);
-
-  // -----------------------
-  // Correctness (5 marks)
-  // -----------------------
-  let r = 0;
-
-  if (hasTryCatch) {
-    r += 3;
-    task.details.push("Connection wrapped in try/catch (proper error handling).");
-  }
-
-  if (logsSuccess) {
-    r += 1;
-    task.details.push('Logs "Mongo connected" on successful connection.');
-  }
-  if (logsError) {
-    r += 1;
-    task.details.push('Logs "Connection error" on failure.');
-  }
-
-  r = Math.min(r, 5);
-
-  // -----------------------
-  // Quality (4 marks)
-  // -----------------------
-  let q = 0;
-
-  if (usesConnectDB) {
-    q += 2;
-    task.details.push("Uses a separate connectDB helper (clean architecture).");
-  }
-
-  if (/await\s+(mongoose\.connect|connectDB)/.test(indexCode)) {
-    q += 2;
-    task.details.push("Uses async/await for the DB connection.");
-  }
-
-  q = Math.min(q, 4);
-
-  task.completeness = c;
-  task.correctness = r;
-  task.quality = q;
-  task.score = Math.min(c + r + q, task.max);
-
-  return task;
 }
 
+function pickProjectRoot(cwd) {
+  if (isAppFolder(cwd)) return cwd;
 
-// ------------------------
-//  Grade TODO 2
-// ------------------------
+  const direct = path.join(cwd, "7-2-restful-api");
+  if (isAppFolder(direct)) return direct;
 
-function gradeTodo2() {
-  const task = {
-    id: 2,
-    label: 'TODO 2 – Song schema & model ("Song")',
-    max: 14,
-    completeness: 0,
-    correctness: 0,
-    quality: 0,
+  const nested = path.join(cwd, "7-2-RESTFul-APIs-main", "7-2-restful-api");
+  if (isAppFolder(nested)) return nested;
+
+  let subs = [];
+  try {
+    subs = fs
+      .readdirSync(cwd, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  } catch {
+    subs = [];
+  }
+
+  for (const name of subs) {
+    const p = path.join(cwd, name);
+    if (isAppFolder(p)) return p;
+
+    const nested2 = path.join(p, "7-2-restful-api");
+    if (isAppFolder(nested2)) return nested2;
+  }
+
+  return cwd;
+}
+
+const PROJECT_ROOT = pickProjectRoot(REPO_ROOT);
+
+/* -----------------------------
+   Find files
+-------------------------------- */
+const serverDir = path.join(PROJECT_ROOT, "server");
+const envFile = path.join(serverDir, ".env");
+const dbFile = path.join(serverDir, "db.js");
+const serverFile = path.join(serverDir, "server.js");
+const modelFile = path.join(serverDir, "models", "song.model.js");
+
+/* -----------------------------
+   Determine submission time
+-------------------------------- */
+let lastCommitISO = null;
+let lastCommitMS = null;
+
+try {
+  lastCommitISO = execSync("git log -1 --format=%cI", { encoding: "utf8" }).trim();
+  lastCommitMS = Date.parse(lastCommitISO);
+} catch {
+  lastCommitISO = new Date().toISOString();
+  lastCommitMS = Date.now();
+}
+
+/* -----------------------------
+   Submission marks
+-------------------------------- */
+const isLate = Number.isFinite(lastCommitMS) ? lastCommitMS > DEADLINE_MS : true;
+const submissionScore = isLate ? SUBMISSION_LATE : SUBMISSION_MAX;
+
+/* -----------------------------
+   Load & strip student files
+-------------------------------- */
+const envRaw = existsFile(envFile) ? safeRead(envFile) : null;
+const dbRaw = existsFile(dbFile) ? safeRead(dbFile) : null;
+const serverRaw = existsFile(serverFile) ? safeRead(serverFile) : null;
+const modelRaw = existsFile(modelFile) ? safeRead(modelFile) : null;
+
+const envCode = envRaw || null;
+const dbCode = dbRaw ? stripJsComments(dbRaw) : null;
+const serverCode = serverRaw ? stripJsComments(serverRaw) : null;
+const modelCode = modelRaw ? stripJsComments(modelRaw) : null;
+
+const combinedCode = [dbCode || "", serverCode || "", modelCode || ""].join("\n\n");
+
+const results = [];
+
+/* -----------------------------
+   Result helpers
+-------------------------------- */
+function addResult(task, required) {
+  const missing = required.filter((r) => !r.ok);
+  const score = splitMarks(task.marks, missing.length, required.length);
+
+  results.push({
+    id: task.id,
+    name: task.name,
+    max: task.marks,
+    score,
+    checklist: required.map((r) => `${r.ok ? "✅" : "❌"} ${r.label}`),
+    deductions: missing.length ? missing.map((m) => `Missing: ${m.label}`) : [],
+  });
+}
+
+function failTask(task, reason) {
+  results.push({
+    id: task.id,
+    name: task.name,
+    max: task.marks,
     score: 0,
-    details: [],
-  };
+    checklist: [],
+    deductions: [reason],
+  });
+}
 
-  const modelCode = safeRead(MODEL_FILE) || "";
+/* -----------------------------
+   Grade TODO 1 — .env connection string
+-------------------------------- */
+{
+  const task = tasks[0];
+
+  if (!envCode) {
+    failTask(task, "server/.env not found / unreadable.");
+  } else {
+    const required = [
+      {
+        label: "server/.env file exists",
+        ok: existsFile(envFile),
+      },
+      {
+        label: "Defines MONGO_URL variable",
+        ok: /^\s*MONGO_URL\s*=/m.test(envCode),
+      },
+      {
+        label: "MONGO_URL is assigned a non-empty value",
+        ok: /^\s*MONGO_URL\s*=\s*.+$/m.test(envCode),
+      },
+      {
+        label: "Assigned value looks like a MongoDB connection string",
+        ok: /MONGO_URL\s*=\s*.*mongodb(?:\+srv)?:\/\//i.test(envCode),
+      },
+    ];
+
+    addResult(task, required);
+  }
+}
+
+/* -----------------------------
+   Grade TODO 2 — dotenv
+-------------------------------- */
+{
+  const task = tasks[1];
+
+  if (!serverCode) {
+    failTask(task, "server/server.js not found / unreadable.");
+  } else {
+    const required = [
+      {
+        label: 'Imports dotenv using import dotenv from "dotenv"',
+        ok: /import\s+dotenv\s+from\s+['"]dotenv['"]/i.test(serverCode),
+      },
+      {
+        label: "Calls dotenv.config()",
+        ok: /dotenv\.config\s*\(\s*\)/i.test(serverCode),
+      },
+    ];
+
+    addResult(task, required);
+  }
+}
+
+/* -----------------------------
+   Grade TASK 2 — Song schema and model
+-------------------------------- */
+{
+  const task = tasks[2];
 
   if (!modelCode) {
-    task.details.push("song.model.js not found at server/models/song.model.js.");
-    return task;
-  }
-
-  const hasImport = /import\s+mongoose\s+from\s+["']mongoose["']/.test(modelCode);
-  const hasSchema = /const\s+songSchema\s*=\s*new\s+mongoose\.Schema\s*\(/.test(
-    modelCode
-  );
-  const hasModelExport = /export\s+const\s+Song\s*=\s*mongoose\.model\(\s*["']Song["']/.test(
-    modelCode
-  );
-
-  const hasTitleField = /title\s*:\s*{[\s\S]*type\s*:\s*String[\s\S]*required\s*:\s*true[\s\S]*}/m.test(
-    modelCode
-  );
-  const hasArtistField = /artist\s*:\s*{[\s\S]*type\s*:\s*String[\s\S]*required\s*:\s*true[\s\S]*}/m.test(
-    modelCode
-  );
-  const hasYearField = /year\s*:\s*{[\s\S]*type\s*:\s*Number[\s\S]*}/m.test(
-    modelCode
-  );
-
-  const titleTrim = /title\s*:\s*{[\s\S]*trim\s*:\s*true[\s\S]*}/m.test(modelCode);
-  const artistTrim = /artist\s*:\s*{[\s\S]*trim\s*:\s*true[\s\S]*}/m.test(modelCode);
-  const yearMinMax = /year\s*:\s*{[\s\S]*min\s*:\s*1900[\s\S]*max\s*:\s*2100[\s\S]*}/m.test(
-    modelCode
-  );
-
-  const hasTimestamps =
-    /new\s+mongoose\.Schema\s*\([\s\S]*,\s*{\s*[\s\S]*timestamps\s*:\s*true[\s\S]*}\s*\)/m.test(
-      modelCode
-    );
-
-  // -----------------------
-  // Completeness (5 marks)
-  // -----------------------
-  let c = 0;
-
-  if (hasImport && hasSchema) {
-    c += 2;
-    task.details.push("Found mongoose import and songSchema definition.");
-  } else if (hasSchema) {
-    c += 1;
-    task.details.push("Found songSchema definition but mongoose import pattern not detected.");
-  }
-
-  if (hasTitleField) {
-    c += 2;
-    task.details.push("Found 'title' field in schema.");
+    failTask(task, "server/models/song.model.js not found / unreadable.");
   } else {
-    task.details.push("Missing 'title' field with proper object definition.");
-  }
+    const required = [
+      {
+        label: 'Imports mongoose in song.model.js',
+        ok: /import\s+mongoose\s+from\s+['"]mongoose['"]/i.test(modelCode),
+      },
+      {
+        label: "Defines a schema using new mongoose.Schema(...)",
+        ok: /new\s+mongoose\.Schema\s*\(/i.test(modelCode),
+      },
+      {
+        label: "Schema includes title field",
+        ok: /title\s*:/i.test(modelCode),
+      },
+      {
+        label: "Schema includes artist field",
+        ok: /artist\s*:/i.test(modelCode),
+      },
+      {
+        label: "Schema includes year field",
+        ok: /year\s*:/i.test(modelCode),
+      },
+      {
+        label: "title field uses String type",
+        ok: /title\s*:\s*\{[\s\S]*?type\s*:\s*String/i.test(modelCode) || /title\s*:\s*String/i.test(modelCode),
+      },
+      {
+        label: "artist field uses String type",
+        ok: /artist\s*:\s*\{[\s\S]*?type\s*:\s*String/i.test(modelCode) || /artist\s*:\s*String/i.test(modelCode),
+      },
+      {
+        label: "year field uses Number type",
+        ok: /year\s*:\s*\{[\s\S]*?type\s*:\s*Number/i.test(modelCode) || /year\s*:\s*Number/i.test(modelCode),
+      },
+      {
+        label: 'Creates model named "Song"',
+        ok: /mongoose\.model\s*\(\s*['"]Song['"]\s*,/i.test(modelCode),
+      },
+      {
+        label: "Exports Song model",
+        ok: /export\s+default\s+Song/i.test(modelCode) || /module\.exports\s*=\s*Song/i.test(modelCode),
+      },
+    ];
 
-  if (hasArtistField) {
-    c += 1;
-    task.details.push("Found 'artist' field in schema.");
+    addResult(task, required);
+  }
+}
+
+/* -----------------------------
+   Grade TODO 3 — POST /api/songs
+-------------------------------- */
+{
+  const task = tasks[3];
+
+  if (!serverCode) {
+    failTask(task, "server/server.js not found / unreadable.");
   } else {
-    task.details.push("Missing 'artist' field with proper object definition.");
+    const required = [
+      {
+        label: 'Defines POST route for "/api/songs"',
+        ok: /app\.post\s*\(\s*['"]\/api\/songs['"]/i.test(serverCode),
+      },
+      {
+        label: "Uses Song.create(...) or new Song(...).save()",
+        ok: /Song\.create\s*\(/i.test(serverCode) || /new\s+Song\s*\(/i.test(serverCode),
+      },
+      {
+        label: "Reads req.body",
+        ok: /req\.body/i.test(serverCode),
+      },
+      {
+        label: "Uses title from request body",
+        ok: /title/i.test(serverCode),
+      },
+      {
+        label: "Uses artist from request body",
+        ok: /artist/i.test(serverCode),
+      },
+      {
+        label: "Responds with status 201 on success",
+        ok: /res\.status\s*\(\s*201\s*\)\.json\s*\(/i.test(serverCode),
+      },
+      {
+        label: "Handles error with status 400",
+        ok: /res\.status\s*\(\s*400\s*\)\.json\s*\(/i.test(serverCode),
+      },
+    ];
+
+    addResult(task, required);
   }
+}
 
-  c = Math.min(c, 5);
+/* -----------------------------
+   Grade TODO 4 — GET /api/songs and /api/songs/:id
+-------------------------------- */
+{
+  const task = tasks[4];
 
-  // -----------------------
-  // Correctness (5 marks)
-  // -----------------------
-  let r = 0;
-
-  if (hasTitleField) {
-    r += 2;
-    task.details.push("title is a String and required:true.");
-  }
-
-  if (hasArtistField) {
-    r += 2;
-    task.details.push("artist is a String and required:true.");
-  }
-
-  if (hasYearField && yearMinMax) {
-    r += 1;
-    task.details.push("year is a Number with min 1900 and max 2100.");
-  }
-
-  r = Math.min(r, 5);
-
-  // -----------------------
-  // Quality (4 marks)
-  // -----------------------
-  let q = 0;
-
-  if (titleTrim && artistTrim) {
-    q += 1;
-    task.details.push("title and artist use trim:true.");
-  }
-
-  if (yearMinMax) {
-    q += 1;
-    task.details.push("year uses sensible min/max validation.");
-  }
-
-  if (hasTimestamps) {
-    q += 2;
-    task.details.push("Schema uses timestamps:true.");
-  }
-
-  q = Math.min(q, 4);
-
-  if (hasModelExport) {
-    task.details.push('Exports Song model via mongoose.model("Song", songSchema).');
+  if (!serverCode) {
+    failTask(task, "server/server.js not found / unreadable.");
   } else {
-    task.details.push('Could not detect export const Song = mongoose.model("Song", songSchema).');
+    const required = [
+      {
+        label: 'Defines GET route for "/api/songs"',
+        ok: /app\.get\s*\(\s*['"]\/api\/songs['"]/i.test(serverCode),
+      },
+      {
+        label: "Uses Song.find()",
+        ok: /Song\.find\s*\(/i.test(serverCode),
+      },
+      {
+        label: "Sorts by createdAt descending or newest first",
+        ok: /\.sort\s*\(\s*\{\s*createdAt\s*:\s*-?1\s*\}\s*\)/i.test(serverCode),
+      },
+      {
+        label: 'Defines GET route for "/api/songs/:id"',
+        ok: /app\.get\s*\(\s*['"]\/api\/songs\/:id['"]/i.test(serverCode),
+      },
+      {
+        label: "Uses Song.findById(...)",
+        ok: /Song\.findById\s*\(/i.test(serverCode),
+      },
+      {
+        label: 'Returns 404 when song is not found',
+        ok: /status\s*\(\s*404\s*\)\.json\s*\(\s*\{\s*message\s*:\s*['"]Song not found['"]/i.test(serverCode),
+      },
+    ];
+
+    addResult(task, required);
+  }
+}
+
+/* -----------------------------
+   Grade TODO 5 — PUT /api/songs/:id
+-------------------------------- */
+{
+  const task = tasks[5];
+
+  if (!serverCode) {
+    failTask(task, "server/server.js not found / unreadable.");
+  } else {
+    const required = [
+      {
+        label: 'Defines PUT route for "/api/songs/:id"',
+        ok: /app\.put\s*\(\s*['"]\/api\/songs\/:id['"]/i.test(serverCode),
+      },
+      {
+        label: "Uses Song.findByIdAndUpdate(...)",
+        ok: /Song\.findByIdAndUpdate\s*\(/i.test(serverCode),
+      },
+      {
+        label: "Uses req.params.id",
+        ok: /req\.params\.id/i.test(serverCode),
+      },
+      {
+        label: "Uses req.body for update data",
+        ok: /req\.body/i.test(serverCode),
+      },
+      {
+        label: "Uses new: true",
+        ok: /new\s*:\s*true/i.test(serverCode),
+      },
+      {
+        label: "Uses runValidators: true",
+        ok: /runValidators\s*:\s*true/i.test(serverCode),
+      },
+      {
+        label: 'Returns 404 when song is not found',
+        ok: /status\s*\(\s*404\s*\)\.json\s*\(\s*\{\s*message\s*:\s*['"]Song not found['"]/i.test(serverCode),
+      },
+    ];
+
+    addResult(task, required);
+  }
+}
+
+/* -----------------------------
+   Grade TODO 6 — DELETE /api/songs/:id
+-------------------------------- */
+{
+  const task = tasks[6];
+
+  if (!serverCode) {
+    failTask(task, "server/server.js not found / unreadable.");
+  } else {
+    const required = [
+      {
+        label: 'Defines DELETE route for "/api/songs/:id"',
+        ok: /app\.delete\s*\(\s*['"]\/api\/songs\/:id['"]/i.test(serverCode),
+      },
+      {
+        label: "Uses Song.findByIdAndDelete(...)",
+        ok: /Song\.findByIdAndDelete\s*\(/i.test(serverCode),
+      },
+      {
+        label: "Uses req.params.id",
+        ok: /req\.params\.id/i.test(serverCode),
+      },
+      {
+        label: 'Returns 404 when song is not found',
+        ok: /status\s*\(\s*404\s*\)\.json\s*\(\s*\{\s*message\s*:\s*['"]Song not found['"]/i.test(serverCode),
+      },
+      {
+        label: "Returns 204 on successful delete",
+        ok: /res\.status\s*\(\s*204\s*\)\.(end|send)\s*\(/i.test(serverCode) || /res\.sendStatus\s*\(\s*204\s*\)/i.test(serverCode),
+      },
+    ];
+
+    addResult(task, required);
+  }
+}
+
+/* -----------------------------
+   Final scoring
+-------------------------------- */
+const stepsScore = results.reduce((sum, r) => sum + r.score, 0);
+const totalScore = round2(stepsScore + submissionScore);
+
+/* -----------------------------
+   Build summary + feedback
+-------------------------------- */
+const LAB_NAME = "7-2-RESTFul-APIs-main";
+
+const submissionLine = `- **Lab:** ${LAB_NAME}
+- **Deadline (Riyadh / UTC+03:00):** ${DEADLINE_RIYADH_ISO}
+- **Last commit time (from git log):** ${lastCommitISO}
+- **Submission marks:** **${submissionScore}/${SUBMISSION_MAX}** ${isLate ? "(Late submission)" : "(On time)"}
+`;
+
+let summary = `# ${LAB_NAME} — Autograding Summary
+
+## Submission
+
+${submissionLine}
+
+## Files Checked
+
+- Repo root (cwd): ${REPO_ROOT}
+- Detected project root: ${PROJECT_ROOT}
+- Server directory: ${existsDir(serverDir) ? `✅ ${serverDir}` : "❌ server folder not found"}
+- .env: ${existsFile(envFile) ? `✅ ${envFile}` : "❌ server/.env not found"}
+- db.js: ${existsFile(dbFile) ? `✅ ${dbFile}` : "❌ server/db.js not found"}
+- server.js: ${existsFile(serverFile) ? `✅ ${serverFile}` : "❌ server/server.js not found"}
+- song.model.js: ${existsFile(modelFile) ? `✅ ${modelFile}` : "❌ server/models/song.model.js not found"}
+
+## Marks Breakdown
+
+| Component | Marks |
+|---|---:|
+`;
+
+for (const r of results) summary += `| ${r.name} | ${r.score}/${r.max} |\n`;
+summary += `| Submission (timing) | ${submissionScore}/${SUBMISSION_MAX} |\n`;
+
+summary += `
+## Total Marks
+
+**${totalScore} / ${TOTAL_MAX}**
+
+## Detailed Checks (What you did / missed)
+`;
+
+for (const r of results) {
+  const done = (r.checklist || []).filter((x) => x.startsWith("✅"));
+  const missed = (r.checklist || []).filter((x) => x.startsWith("❌"));
+
+  summary += `
+<details>
+  <summary><strong>${mdEscape(r.name)}</strong> — ${r.score}/${r.max}</summary>
+
+  <br/>
+
+  <strong>✅ Found</strong>
+  ${done.length ? "\n" + done.map((x) => `- ${mdEscape(x)}`).join("\n") : "\n- (Nothing detected)"}
+
+  <br/><br/>
+
+  <strong>❌ Missing</strong>
+  ${missed.length ? "\n" + missed.map((x) => `- ${mdEscape(x)}`).join("\n") : "\n- (Nothing missing)"}
+
+  <br/><br/>
+
+  <strong>❗ Deductions / Notes</strong>
+  ${
+    r.deductions && r.deductions.length
+      ? "\n" + r.deductions.map((d) => `- ${mdEscape(d)}`).join("\n")
+      : "\n- No deductions."
   }
 
-  task.completeness = c;
-  task.correctness = r;
-  task.quality = q;
-  task.score = Math.min(c + r + q, task.max);
-
-  return task;
+</details>
+`;
 }
 
+summary += `
+> Full feedback is also available in: \`artifacts/feedback/README.md\`
+`;
 
-// ------------------------
-//  Regex helpers for index.js routes
-// ------------------------
+let feedback = `# ${LAB_NAME} — Feedback
 
-function gradeTodo3(indexCode) {
-    const task = {
-        id: 3,
-        label: "TODO 3 – POST /api/songs (create)",
-        max: 14,
-        completeness: 0,
-        correctness: 0,
-        quality: 0,
-        score: 0,
-        details: [],
-    };
+## Submission
 
-    const hasPost = /app\.post\s*\(\s*["']\/api\/songs["']\s*,/m.test(indexCode);
-    const usesSongCreate = /Song\.create\s*\(/m.test(indexCode);
-    const usesStatus201 = /\.status\s*\(\s*201\s*\)/m.test(indexCode);
-    const has400 = /\.status\s*\(\s*400\s*\)/m.test(indexCode);
+${submissionLine}
 
-    // Completeness (5)
-    let c = 0;
-    if (hasPost && usesSongCreate) {
-        c = 5;
-        task.details.push(
-            "Found POST /api/songs route using Song.create(...) (good)."
-        );
-    } else if (hasPost) {
-        c = 3;
-        task.details.push("Found POST /api/songs route, but Song.create(...) not clearly detected.");
-    } else if (usesSongCreate) {
-        c = 2;
-        task.details.push("Found Song.create(...) but POST /api/songs route not clearly detected.");
-    }
+## Files Checked
 
-    // Correctness (5)
-    let r = 0;
-    if (hasPost && usesSongCreate && usesStatus201) {
-        r = 5;
-        task.details.push(
-            "POST /api/songs sends 201 status when creating a song."
-        );
-    } else if (hasPost && usesSongCreate) {
-        r = 3;
-        task.details.push(
-            "POST /api/songs uses Song.create but 201 status code not clearly detected."
-        );
-    }
+- Repo root (cwd): ${REPO_ROOT}
+- Detected project root: ${PROJECT_ROOT}
+- Server directory: ${existsDir(serverDir) ? `✅ ${serverDir}` : "❌ server folder not found"}
+- .env: ${existsFile(envFile) ? `✅ ${envFile}` : "❌ server/.env not found"}
+- db.js: ${existsFile(dbFile) ? `✅ ${dbFile}` : "❌ server/db.js not found"}
+- server.js: ${existsFile(serverFile) ? `✅ ${serverFile}` : "❌ server/server.js not found"}
+- song.model.js: ${existsFile(modelFile) ? `✅ ${modelFile}` : "❌ server/models/song.model.js not found"}
 
-    if (has400) {
-        task.details.push("Found 400 status usage (validation/error handling).");
-    }
+---
 
-    // Quality (4)
-    let q = 0;
-    const hasTryCatchPost = /app\.post[\s\S]*try\s*{[\s\S]*Song\.create[\s\S]*}\s*catch\s*\(/m.test(
-        indexCode
-    );
-    if (hasTryCatchPost && has400) {
-        q = 4;
-        task.details.push(
-            "POST handler wraps Song.create in try/catch and returns 400 on errors."
-        );
-    } else if (hasPost) {
-        q = 2;
-        task.details.push(
-            "POST handler exists but error handling could be more robust."
-        );
-    }
+## TODO-by-TODO Feedback
+`;
 
-    c = clamp(c, 0, 5);
-    r = clamp(r, 0, 5);
-    q = clamp(q, 0, 4);
+for (const r of results) {
+  feedback += `
+### ${r.name} — **${r.score}/${r.max}**
 
-    task.completeness = c;
-    task.correctness = r;
-    task.quality = q;
-    task.score = clamp(c + r + q, 0, task.max);
-    return task;
+**Checklist**
+${r.checklist.length ? r.checklist.map((x) => `- ${x}`).join("\n") : "- (No checks available)"}
+
+**Deductions / Notes**
+${r.deductions.length ? r.deductions.map((d) => `- ❗ ${d}`).join("\n") : "- ✅ No deductions. Good job!"}
+`;
 }
 
-function gradeTodo4(indexCode) {
-    const task = {
-        id: 4,
-        label: "TODO 4 – GET /api/songs & GET /api/songs/:id",
-        max: 14,
-        completeness: 0,
-        correctness: 0,
-        quality: 0,
-        score: 0,
-        details: [],
-    };
+feedback += `
+---
 
-    const hasGetAll = /app\.get\s*\(\s*["']\/api\/songs["']\s*,/m.test(indexCode);
-    const hasFindAll = /Song\.find\s*\(/m.test(indexCode);
-    const hasSortCreatedAtDesc = /\.sort\s*\(\s*{\s*createdAt\s*:\s*-1\s*}\s*\)/m.test(
-        indexCode
-    );
+## How marks were deducted (rules)
 
-    const hasGetById = /app\.get\s*\(\s*["']\/api\/songs\/:id["']\s*,/m.test(
-        indexCode
-    );
-    const hasFindById = /Song\.findById\s*\(/m.test(indexCode);
-    const has404Msg = /"Song not found"/m.test(indexCode);
+- JS comments are ignored, so starter TODO comments do NOT count.
+- The grader checks \`.env\`, \`db.js\`, \`server.js\`, and \`server/models/song.model.js\`.
+- The MongoDB connection string in \`.env\` is checked only for assignment/presence, not for exact student value.
+- Checks are intentionally lenient and verify top-level implementation only.
+- Code can be in ANY order; repeated code is allowed.
+- Common equivalents are accepted where possible.
+- npm install commands and manual testing commands are NOT graded.
+- Missing required items reduce marks proportionally within that TODO.
+- The script checks for the required REST API structure, not exact wording.
+`;
 
-    // Completeness (5)
-    let c = 0;
-    if (hasGetAll) {
-        c += 3;
-        task.details.push("Found GET /api/songs route.");
-    } else {
-        task.details.push("Missing GET /api/songs route.");
-    }
-
-    if (hasGetById) {
-        c += 2;
-        task.details.push("Found GET /api/songs/:id route.");
-    } else {
-        task.details.push("Missing GET /api/songs/:id route.");
-    }
-
-    c = clamp(c, 0, 5);
-
-    // Correctness (5)
-    let r = 0;
-    if (hasGetAll && hasFindAll) {
-        r += 3;
-        task.details.push("GET /api/songs uses Song.find() to get data.");
-    }
-    if (hasSortCreatedAtDesc) {
-        r += 1;
-        task.details.push("GET /api/songs sorts by createdAt descending.");
-    }
-    if (hasGetById && hasFindById && has404Msg) {
-        r += 1;
-        task.details.push(
-            "GET /api/songs/:id uses Song.findById and returns 404 when not found."
-        );
-    }
-
-    r = clamp(r, 0, 5);
-
-    // Quality (4)
-    let q = 0;
-    if (hasGetAll && hasSortCreatedAtDesc) {
-        q += 2;
-        task.details.push(
-            "GET /api/songs returns newest songs first (good UX / API design)."
-        );
-    }
-    if (hasGetById && has404Msg) {
-        q += 2;
-        task.details.push(
-            'GET /api/songs/:id returns clear "Song not found" message when needed.'
-        );
-    }
-
-    q = clamp(q, 0, 4);
-
-    task.completeness = c;
-    task.correctness = r;
-    task.quality = q;
-    task.score = clamp(c + r + q, 0, task.max);
-    return task;
+/* -----------------------------
+   Write outputs
+-------------------------------- */
+if (process.env.GITHUB_STEP_SUMMARY) {
+  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
 }
 
-function gradeTodo5(indexCode) {
-    const task = {
-        id: 5,
-        label: "TODO 5 – PUT /api/songs/:id (update)",
-        max: 14,
-        completeness: 0,
-        correctness: 0,
-        quality: 0,
-        score: 0,
-        details: [],
-    };
+const csv = `student,score,max_score
+all_students,${totalScore},${TOTAL_MAX}
+`;
 
-    const hasPut = /app\.put\s*\(\s*["']\/api\/songs\/:id["']\s*,/m.test(
-        indexCode
-    );
-    const usesFindByIdAndUpdate = /Song\.findByIdAndUpdate\s*\(/m.test(indexCode);
-    const hasOpts = /findByIdAndUpdate\s*\([\s\S]*{\s*[^}]*new\s*:\s*true[^}]*runValidators\s*:\s*true[^}]*}/m.test(
-        indexCode
-    );
-    const has404Msg = /"Song not found"/m.test(indexCode);
-    const has400 = /\.status\s*\(\s*400\s*\)/m.test(indexCode);
+fs.mkdirSync(ARTIFACTS_DIR, { recursive: true });
+fs.writeFileSync(path.join(ARTIFACTS_DIR, "grade.csv"), csv);
+fs.writeFileSync(path.join(FEEDBACK_DIR, "README.md"), feedback);
 
-    // Completeness (5)
-    let c = 0;
-    if (hasPut && usesFindByIdAndUpdate) {
-        c = 5;
-        task.details.push(
-            "Found PUT /api/songs/:id route using Song.findByIdAndUpdate."
-        );
-    } else if (hasPut) {
-        c = 3;
-        task.details.push(
-            "Found PUT /api/songs/:id route, but Song.findByIdAndUpdate not clearly detected."
-        );
-    }
-
-    // Correctness (5)
-    let r = 0;
-    if (hasPut && usesFindByIdAndUpdate && hasOpts) {
-        r = 5;
-        task.details.push(
-            "PUT /api/songs/:id uses (new:true, runValidators:true) in findByIdAndUpdate."
-        );
-    } else if (hasPut && usesFindByIdAndUpdate) {
-        r = 3;
-        task.details.push(
-            "PUT /api/songs/:id uses findByIdAndUpdate but without full options (new:true, runValidators:true)."
-        );
-    }
-
-    // Quality (4)
-    let q = 0;
-    const hasTryCatch = /app\.put[\s\S]*try\s*{[\s\S]*findByIdAndUpdate[\s\S]*}\s*catch\s*\(/m.test(
-        indexCode
-    );
-    if (hasPut && has404Msg) {
-        q += 2;
-        task.details.push(
-            'PUT /api/songs/:id returns 404 with "Song not found" when ID is invalid.'
-        );
-    }
-    if (hasTryCatch && has400) {
-        q += 2;
-        task.details.push(
-            "PUT /api/songs/:id handler uses try/catch and returns 400 on validation errors."
-        );
-    }
-
-    c = clamp(c, 0, 5);
-    r = clamp(r, 0, 5);
-    q = clamp(q, 0, 4);
-
-    task.completeness = c;
-    task.correctness = r;
-    task.quality = q;
-    task.score = clamp(c + r + q, 0, task.max);
-    return task;
-}
-
-function gradeTodo6(indexCode) {
-    const task = {
-        id: 6,
-        label: "TODO 6 – DELETE /api/songs/:id (delete)",
-        max: 10,
-        completeness: 0,
-        correctness: 0,
-        quality: 0,
-        score: 0,
-        details: [],
-    };
-
-    const hasDelete = /app\.delete\s*\(\s*["']\/api\/songs\/:id["']\s*,/m.test(
-        indexCode
-    );
-    const usesFindByIdAndDelete = /Song\.findByIdAndDelete\s*\(/m.test(indexCode);
-    const has204 = /\.status\s*\(\s*204\s*\)/m.test(indexCode);
-    const has404Msg = /"Song not found"/m.test(indexCode);
-
-    // Completeness (4)
-    let c = 0;
-    if (hasDelete && usesFindByIdAndDelete) {
-        c = 4;
-        task.details.push(
-            "Found DELETE /api/songs/:id route using Song.findByIdAndDelete."
-        );
-    } else if (hasDelete) {
-        c = 2;
-        task.details.push(
-            "Found DELETE /api/songs/:id route, but Song.findByIdAndDelete not clearly detected."
-        );
-    }
-
-    // Correctness (3)
-    let r = 0;
-    if (hasDelete && usesFindByIdAndDelete && has204) {
-        r = 3;
-        task.details.push(
-            "DELETE /api/songs/:id returns 204 No Content on successful deletion."
-        );
-    } else if (hasDelete && usesFindByIdAndDelete) {
-        r = 2;
-        task.details.push(
-            "DELETE /api/songs/:id uses Song.findByIdAndDelete but 204 status not clearly detected."
-        );
-    }
-
-    // Quality (3)
-    let q = 0;
-    if (hasDelete && has404Msg) {
-        q += 2;
-        task.details.push(
-            'DELETE /api/songs/:id returns 404 with "Song not found" when ID is invalid.'
-        );
-    }
-    if (hasDelete) {
-        q += 1;
-        task.details.push(
-            "DELETE handler exists with basic error handling / response logic."
-        );
-    }
-
-    c = clamp(c, 0, 4);
-    r = clamp(r, 0, 3);
-    q = clamp(q, 0, 3);
-
-    task.completeness = c;
-    task.correctness = r;
-    task.quality = q;
-    task.score = clamp(c + r + q, 0, task.max);
-    return task;
-}
-
-// ------------------------
-//  Run grading
-// ------------------------
-
-(function main() {
-    // Submission timing
-    report.submission = computeSubmissionMarks();
-
-    // Implementation tasks
-    const todo1 = gradeTodo1();
-    const todo2 = gradeTodo2();
-    const todo3 = gradeTodo3(indexCode);
-    const todo4 = gradeTodo4(indexCode);
-    const todo5 = gradeTodo5(indexCode);
-    const todo6 = gradeTodo6(indexCode);
-
-    report.tasks = [todo1, todo2, todo3, todo4, todo5, todo6];
-
-    // Aggregate implementation score
-    let rawImpl = 0;
-    let attempted = 0;
-    let fullyCorrect = 0;
-
-    for (const t of report.tasks) {
-        rawImpl += t.score;
-        if (t.score > 0) attempted += 1;
-        if (t.score >= t.max) fullyCorrect += 1;
-    }
-
-    report.implementationRaw = rawImpl;
-    report.attemptedTasks = attempted;
-    report.fullyCorrectTasks = fullyCorrect;
-
-    // Flexible rules for implementation part (80/80)
-    let adjustedImpl = rawImpl;
-
-    if (attempted === 0) {
-        adjustedImpl = 0;
-    } else if (fullyCorrect === report.tasks.length) {
-        adjustedImpl = report.implementationMax; // 80/80
-    } else if (rawImpl < 50) {
-        // At least one task attempted or partially implemented
-        adjustedImpl = 50;
-    }
-
-    adjustedImpl = clamp(adjustedImpl, 0, report.implementationMax);
-    report.implementationAdjusted = adjustedImpl;
-
-    // Overall total
-    const submissionScore = report.submission.score;
-    report.totalMax = report.implementationMax + report.submission.max;
-    report.total = submissionScore + adjustedImpl;
-
-    // ------------------------
-    //  Build feedback messages
-    // ------------------------
-
-    const lines = [];
-
-    lines.push("==============================================");
-    lines.push(" SWE 363 – Lab 7-2 RESTful APIs: Grade Report");
-    lines.push("==============================================");
-    lines.push("");
-
-    // Submission
-    lines.push("Submission (20 marks)");
-    lines.push("---------------------");
-    lines.push(
-        `Score: ${submissionScore} / ${report.submission.max} ` +
-        (report.submission.onTime ? "(on time)" : "(late)")
-    );
-    if (report.submission.reason) {
-        lines.push(`Note: ${report.submission.reason}`);
-    }
-    lines.push("");
-
-    // Implementation summary
-    lines.push("Implementation (80 marks)");
-    lines.push("-------------------------");
-    lines.push(
-        `Raw implementation score:      ${report.implementationRaw} / ${report.implementationMax}`
-    );
-    if (report.implementationRaw !== report.implementationAdjusted) {
-        lines.push(
-            `Adjusted implementation score: ${report.implementationAdjusted} / ${report.implementationMax} (flexible rules applied)`
-        );
-    } else {
-        lines.push(
-            `Adjusted implementation score: ${report.implementationAdjusted} / ${report.implementationMax}`
-        );
-    }
-    lines.push(
-        `Tasks attempted: ${report.attemptedTasks} / ${report.tasks.length}`
-    );
-    lines.push(
-        `Tasks fully correct: ${report.fullyCorrectTasks} / ${report.tasks.length}`
-    );
-    lines.push("");
-
-    // Per-task breakdown
-    for (const t of report.tasks) {
-        lines.push(`Task ${t.id}: ${t.label}`);
-        lines.push(
-            `  Score: ${t.score} / ${t.max} (Completeness: ${t.completeness}, Correctness: ${t.correctness}, Quality: ${t.quality})`
-        );
-        if (t.details.length > 0) {
-            lines.push("  Details:");
-            for (const d of t.details) {
-                lines.push(`    - ${d}`);
-            }
-        }
-        lines.push("");
-    }
-
-    // Overall
-    lines.push("Overall Result");
-    lines.push("--------------");
-    lines.push(
-        `Total score: ${report.total} / ${report.totalMax} (Submission: ${submissionScore}, Implementation: ${report.implementationAdjusted})`
-    );
-    lines.push("");
-
-    const output = lines.join("\n");
-
-    // Print to console
-    console.log(output);
-
-    // Also write to GitHub Actions job summary if available
-    // Also write to GitHub Actions job summary if available
-    const summaryPath = process.env.GITHUB_STEP_SUMMARY;
-    if (summaryPath) {
-        const mdLines = [];
-        mdLines.push("# Lab 7-2 RESTful APIs – Auto Grade Report");
-        mdLines.push("");
-
-        // TOTAL ONLY
-        mdLines.push(`## **Total score: \`${report.total} / ${report.totalMax}\`**`);
-        mdLines.push("");
-
-        // Submission
-        mdLines.push("## Submission (20 marks)");
-        mdLines.push(`- **Score:** ${submissionScore} / ${report.submission.max}`);
-        if (report.submission.reason) {
-            mdLines.push(`- ${report.submission.reason}`);
-        }
-        mdLines.push("");
-
-        // Implementation (cleaned)
-        mdLines.push("## Implementation (80 marks)");
-        mdLines.push(`- **Score:** ${report.implementationAdjusted} / ${report.implementationMax}`);
-        mdLines.push("");
-
-        // Per-task breakdown
-        mdLines.push("## Task Breakdown");
-        for (const t of report.tasks) {
-            mdLines.push(`### Task ${t.id}: ${t.label}`);
-            mdLines.push(
-                `**Score:** ${t.score} / ${t.max} ` +
-                `(C: ${t.completeness}, Corr: ${t.correctness}, Q: ${t.quality})`
-            );
-            if (t.details.length > 0) {
-                mdLines.push("**Details:**");
-                for (const d of t.details) mdLines.push(`- ${d}`);
-            }
-            mdLines.push("");
-        }
-
-        fs.writeFileSync(summaryPath, mdLines.join("\n"), "utf8");
-    }
-
-    // Always exit 0 so students always see feedback
-    process.exit(0);
-})();
+console.log(
+  `✔ Lab graded: ${totalScore}/${TOTAL_MAX} (Submission: ${submissionScore}/${SUBMISSION_MAX}, TODOs: ${stepsScore}/${STEPS_MAX}).`
+);
