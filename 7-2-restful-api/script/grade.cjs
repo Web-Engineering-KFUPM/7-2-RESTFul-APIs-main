@@ -4,7 +4,6 @@
  * Lab Autograder — 7-2 RESTFul API
  *
  * Grades based on:
- * - server/db.js
  * - server/server.js
  * - server/models/song.model.js
  *
@@ -22,7 +21,6 @@
  * - app folder:     7-2-RESTFul-APIs-main/7-2-restful-api/
  * - grader file:    anywhere inside repo
  * - student files:
- *      7-2-restful-api/server/db.js
  *      7-2-restful-api/server/server.js
  *      7-2-restful-api/server/models/song.model.js
  *
@@ -31,6 +29,7 @@
  * - Checks are intentionally lenient and verify top-level implementation only.
  * - Code can be in any order.
  * - server/.env is intentionally excluded from grading.
+ * - server/db.js is intentionally excluded from grading.
  */
 
 const fs = require("fs");
@@ -56,13 +55,12 @@ const SUBMISSION_LATE = 10;
    TODO marks (out of 80)
 -------------------------------- */
 const tasks = [
-  { id: "t1", name: "TODO 1: MongoDB connection in server/db.js", marks: 12 },
-  { id: "t2", name: "TODO 2: Import dotenv and load environment", marks: 8 },
-  { id: "t3", name: "TASK 2: Create Song schema and model", marks: 16 },
-  { id: "t4", name: "TODO 3: POST /api/songs", marks: 14 },
-  { id: "t5", name: "TODO 4: GET /api/songs and GET /api/songs/:id", marks: 10 },
-  { id: "t6", name: "TODO 5: PUT /api/songs/:id", marks: 10 },
-  { id: "t7", name: "TODO 6: DELETE /api/songs/:id", marks: 10 },
+  { id: "t2", name: "TODO 2: Import dotenv and load environment", marks: 10 },
+  { id: "t3", name: "TASK 2: Create Song schema and model", marks: 18 },
+  { id: "t4", name: "TODO 3: POST /api/songs", marks: 18 },
+  { id: "t5", name: "TODO 4: GET /api/songs and GET /api/songs/:id", marks: 12 },
+  { id: "t6", name: "TODO 5: PUT /api/songs/:id", marks: 11 },
+  { id: "t7", name: "TODO 6: DELETE /api/songs/:id", marks: 11 },
 ];
 
 const STEPS_MAX = tasks.reduce((sum, t) => sum + t.marks, 0); // 80
@@ -251,7 +249,6 @@ const PROJECT_ROOT = pickProjectRoot(REPO_ROOT);
    Find files
 -------------------------------- */
 const serverDir = path.join(PROJECT_ROOT, "server");
-const dbFile = path.join(serverDir, "db.js");
 const serverFile = path.join(serverDir, "server.js");
 const modelFile = path.join(serverDir, "models", "song.model.js");
 
@@ -278,11 +275,9 @@ const submissionScore = isLate ? SUBMISSION_LATE : SUBMISSION_MAX;
 /* -----------------------------
    Load & strip student files
 -------------------------------- */
-const dbRaw = existsFile(dbFile) ? safeRead(dbFile) : null;
 const serverRaw = existsFile(serverFile) ? safeRead(serverFile) : null;
 const modelRaw = existsFile(modelFile) ? safeRead(modelFile) : null;
 
-const dbCode = dbRaw ? stripJsComments(dbRaw) : null;
 const serverCode = serverRaw ? stripJsComments(serverRaw) : null;
 const modelCode = modelRaw ? stripJsComments(modelRaw) : null;
 
@@ -317,49 +312,10 @@ function failTask(task, reason) {
 }
 
 /* -----------------------------
-   Grade TODO 1 — MongoDB connection in db.js
--------------------------------- */
-{
-  const task = tasks[0];
-
-  if (!dbCode) {
-    failTask(task, "server/db.js not found / unreadable.");
-  } else {
-    const required = [
-      {
-        label: 'Imports mongoose using import mongoose from "mongoose"',
-        ok: /import\s+mongoose\s+from\s+['"]mongoose['"]/i.test(dbCode),
-      },
-      {
-        label: "Calls mongoose.connect(...)",
-        ok: /mongoose\.connect\s*\(/i.test(dbCode),
-      },
-      {
-        label: "Uses MONGO_URL directly or receives it as parameter",
-        ok:
-          /mongoose\.connect\s*\(\s*process\.env\.MONGO_URL\s*\)/i.test(dbCode) ||
-          (/export\s+async\s+function\s+connectDB\s*\(\s*url\s*\)/i.test(dbCode) &&
-           /mongoose\.connect\s*\(\s*url\s*\)/i.test(dbCode)),
-      },
-      {
-        label: 'Logs success message like "Mongo connected"',
-        ok: /Mongo connected/i.test(dbCode),
-      },
-      {
-        label: 'Logs connection error message',
-        ok: /Connection error:/i.test(dbCode) || /console\.error\s*\(/i.test(dbCode),
-      },
-    ];
-
-    addResult(task, required);
-  }
-}
-
-/* -----------------------------
    Grade TODO 2 — dotenv
 -------------------------------- */
 {
-  const task = tasks[1];
+  const task = tasks[0];
 
   if (!serverCode) {
     failTask(task, "server/server.js not found / unreadable.");
@@ -383,7 +339,7 @@ function failTask(task, reason) {
    Grade TASK 2 — Song schema and model
 -------------------------------- */
 {
-  const task = tasks[2];
+  const task = tasks[1];
 
   if (!modelCode) {
     failTask(task, "server/models/song.model.js not found / unreadable.");
@@ -411,15 +367,21 @@ function failTask(task, reason) {
       },
       {
         label: "title field uses String type",
-        ok: /title\s*:\s*\{[\s\S]*?type\s*:\s*String/i.test(modelCode) || /title\s*:\s*String/i.test(modelCode),
+        ok:
+          /title\s*:\s*\{[\s\S]*?type\s*:\s*String/i.test(modelCode) ||
+          /title\s*:\s*String/i.test(modelCode),
       },
       {
         label: "artist field uses String type",
-        ok: /artist\s*:\s*\{[\s\S]*?type\s*:\s*String/i.test(modelCode) || /artist\s*:\s*String/i.test(modelCode),
+        ok:
+          /artist\s*:\s*\{[\s\S]*?type\s*:\s*String/i.test(modelCode) ||
+          /artist\s*:\s*String/i.test(modelCode),
       },
       {
         label: "year field uses Number type",
-        ok: /year\s*:\s*\{[\s\S]*?type\s*:\s*Number/i.test(modelCode) || /year\s*:\s*Number/i.test(modelCode),
+        ok:
+          /year\s*:\s*\{[\s\S]*?type\s*:\s*Number/i.test(modelCode) ||
+          /year\s*:\s*Number/i.test(modelCode),
       },
       {
         label: 'Creates model named "Song"',
@@ -443,7 +405,7 @@ function failTask(task, reason) {
    Grade TODO 3 — POST /api/songs
 -------------------------------- */
 {
-  const task = tasks[3];
+  const task = tasks[2];
 
   if (!serverCode) {
     failTask(task, "server/server.js not found / unreadable.");
@@ -484,10 +446,10 @@ function failTask(task, reason) {
 }
 
 /* -----------------------------
-   Grade TODO 4 — GET /api/songs and /api/songs/:id
+   Grade TODO 4 — GET /api/songs and GET /api/songs/:id
 -------------------------------- */
 {
-  const task = tasks[4];
+  const task = tasks[3];
 
   if (!serverCode) {
     failTask(task, "server/server.js not found / unreadable.");
@@ -527,7 +489,7 @@ function failTask(task, reason) {
    Grade TODO 5 — PUT /api/songs/:id
 -------------------------------- */
 {
-  const task = tasks[5];
+  const task = tasks[4];
 
   if (!serverCode) {
     failTask(task, "server/server.js not found / unreadable.");
@@ -571,7 +533,7 @@ function failTask(task, reason) {
    Grade TODO 6 — DELETE /api/songs/:id
 -------------------------------- */
 {
-  const task = tasks[6];
+  const task = tasks[5];
 
   if (!serverCode) {
     failTask(task, "server/server.js not found / unreadable.");
@@ -595,7 +557,9 @@ function failTask(task, reason) {
       },
       {
         label: "Returns 204 on successful delete",
-        ok: /res\.status\s*\(\s*204\s*\)\.(end|send)\s*\(/i.test(serverCode) || /res\.sendStatus\s*\(\s*204\s*\)/i.test(serverCode),
+        ok:
+          /res\.status\s*\(\s*204\s*\)\.(end|send)\s*\(/i.test(serverCode) ||
+          /res\.sendStatus\s*\(\s*204\s*\)/i.test(serverCode),
       },
     ];
 
@@ -631,7 +595,6 @@ ${submissionLine}
 - Repo root (cwd): ${REPO_ROOT}
 - Detected project root: ${PROJECT_ROOT}
 - Server directory: ${existsDir(serverDir) ? `✅ ${serverDir}` : "❌ server folder not found"}
-- db.js: ${existsFile(dbFile) ? `✅ ${dbFile}` : "❌ server/db.js not found"}
 - server.js: ${existsFile(serverFile) ? `✅ ${serverFile}` : "❌ server/server.js not found"}
 - song.model.js: ${existsFile(modelFile) ? `✅ ${modelFile}` : "❌ server/models/song.model.js not found"}
 
@@ -698,7 +661,6 @@ ${submissionLine}
 - Repo root (cwd): ${REPO_ROOT}
 - Detected project root: ${PROJECT_ROOT}
 - Server directory: ${existsDir(serverDir) ? `✅ ${serverDir}` : "❌ server folder not found"}
-- db.js: ${existsFile(dbFile) ? `✅ ${dbFile}` : "❌ server/db.js not found"}
 - server.js: ${existsFile(serverFile) ? `✅ ${serverFile}` : "❌ server/server.js not found"}
 - song.model.js: ${existsFile(modelFile) ? `✅ ${modelFile}` : "❌ server/models/song.model.js not found"}
 
@@ -725,8 +687,9 @@ feedback += `
 ## How marks were deducted (rules)
 
 - JS comments are ignored, so starter TODO comments do NOT count.
-- The grader checks \`db.js\`, \`server.js\`, and \`server/models/song.model.js\`.
+- The grader checks \`server.js\` and \`server/models/song.model.js\`.
 - \`.env\` is intentionally excluded from grading.
+- \`db.js\` is intentionally excluded from grading.
 - Checks are intentionally lenient and verify top-level implementation only.
 - Code can be in ANY order; repeated code is allowed.
 - Common equivalents are accepted where possible.
