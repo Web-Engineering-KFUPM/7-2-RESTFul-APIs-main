@@ -11,7 +11,10 @@ data dynamically.
 
 ------------------------------------------------------------------------
 
-> **Note:** Follow `app.jsx` to implement the lab. The file contains TODO blocks that describe exactly what to build.
+> **Note:**
+> Please follow the `7-2-restful-api\client\src\App.jsx` file to implement the TODOs.
+>  
+> **Due Date:** 15 April, 2026, **8:59 PM**
 
 ## Reading Assignment
 

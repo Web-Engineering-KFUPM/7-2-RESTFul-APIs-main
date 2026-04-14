@@ -17,11 +17,11 @@ LAB SETUP INSTRUCTIONS
       OR
       npm install
 
-3. Start the front server server from this path: 7-2-RESTFul-APIs-Dromarjh-main\7-2-restful-api\client:
+3. Start the front server server from this path: 7-2-RESTFul-APIs-main\7-2-restful-api\client:
    Run:
       npm run dev
 
-4. Start the back-end server from a separate terminal, path: 7-2-RESTFul-APIs-Dromarjh-main\7-2-restful-api\server:
+4. Start the back-end server from a separate terminal, path: 7-2-RESTFul-APIs-main\7-2-restful-api\server:
     Run command to install express, cors, mongoose dotenv:
       npm install express cors mongoose dotenv
 
@@ -40,6 +40,11 @@ LAB SETUP INSTRUCTIONS
  *  =================================================================
  *  Steps:
  *    - Open the server/.env file
+ *    - Copy connection string from your mongo cloud account: clusters->connection->MongoDB for VS Code
+ *    - Save the connection string to MONGO_URL variable.
+ *    - Replace the <db_password> with your database passowrd.
+ *    - At the end of the connection string after back slash "/", write swe363_songs.
+ *        For Example: mongodb+srv://<db_username>:<db_password>@cluster0.oh7ap07.mongodb.net/swe363_songs
  *    - Write your db_username & db_password in the connection string.
  *    - If connection successful → console.log("Mongo connected").
  *    - If error → console.error("Connection error:", err.message)
@@ -49,7 +54,20 @@ LAB SETUP INSTRUCTIONS
  */
 
 /** =================================================================
- *  TASK 2 — Create Schema & Model (file: server/models/song.mode.js)
+ *  TODO 2 — Import dotenv and load environment (file: server/server.js)
+ *  =================================================================
+ *  Steps: 
+ *    - import the dotenv.
+ *    - load the load environment variables.
+ * 
+ *  Syntax hint:
+        import ______ from "________";
+        ______.config();
+ * 
+ */
+
+/** =================================================================
+ *  TASK 2 — Create Schema & Model (file: server/models/song.model.js)
  *  =================================================================
  *  Goal:
  *    - Define a Song schema with fields:
@@ -58,18 +76,23 @@ LAB SETUP INSTRUCTIONS
  *        year (Number)
  *    - Export a Mongoose model named "Song".
  *
- *  Hint:
+ *  Example:
+ *    name: { type: String, required: true, trim: true }
+ *      Note: trim is used to remove the extra spaces automatically.
+ * 
+ *  Syntax hint:
+ * 
       const songSchema = new mongoose.Schema({
-        title:  { type: String, required: true, trim: true },
-        artist: { type: String, required: true, trim: true },
-        year:   { type: Number, min: 1900, max: 2100 }
-      }, { timestamps: true });
+        title:  { type: _______, required: _____, trim: _____ },
+        artist: { type: _______, required: _____, trim: _____ },
+        year:   { type: _______, min: _____, max: _____ }
+      }, { timestamps: _____ });
 
       const Song = mongoose.model("Song", songSchema);
  */
 
 /** =================================================================
- *  TODO 3 — POST /api/songs (Insert) file: server/index.js
+ *  TODO 3 — POST /api/songs (Insert) file: server/server.js
  *  =================================================================
  *  Goal:
  *    - Insert a new song into DB.
@@ -77,80 +100,80 @@ LAB SETUP INSTRUCTIONS
  *    - Respond 201 + created song on success.
  *    - Respond 400 + {message} on validation error.
  *
- *  Hint:
-        app.post("/api/songs", async (req, res) => {
-          try {
-            const { title = "", artist = "", year } = req.body || {};
-            const created = await Song.create({
-              title: title.trim(),
-              artist: artist.trim(),
-              year
-            });
-            res.status(201).json(created);
-          } catch (err) {
-            res.status(400).json({ message: err.message || "Create failed" });
-          }
-        });
+ *  Syntax hint:
+      app.post("__________", async (req, res) => {
+        try {
+          const { title = "", artist = "", year } = __________ || {};
+          const created = await __________.create({
+            title: __________.trim(),
+            artist: __________.trim(),
+            year
+          });
+          res.status(____).json(__________);
+        } catch (err) {
+          res.status(____).json({ message: err.message || "____________" });
+        }
+      });
  */
 
 /*  =================================================================
- *  TODO 4— GET /api/songs (Read all) file: server/index.js
+ *  TODO 4— GET /api/songs (Read all) file: server/server.js
  *  =================================================================
  *  Goal:
  *    - Use Song.find() to get all songs from DB.
  *    - Sort by newest first (createdAt descending).
  *    - Return JSON array of songs.
  *
- *  Hint:
-      app.get("/api/songs", async (_req, res) => {
-            const rows = await Song.find().sort({ createdAt: -1 });
-            res.json(rows);
+ *  Syntax hint:
+      app.get("__________", async (____, res) => {
+        const rows = await __________.find().sort({ createdAt: ___ });
+        res.json(____);
       });
 
-      app.get("/api/songs/:id", async (req, res) => {
-          const s = await Song.findById(req.params.id);
-          if (!s) return res.status(404).json({ message: "Song not found" });
-          res.json(s);
-        });
+      app.get("______________", async (req, res) => {
+        const s = await __________.findById(__________);
+        if (!s) return res.status(___).json({ message: "______________" });
+        res.json(____);
+      });
  */
 
 /** =================================================================
- *  TODO 5 — PUT /api/songs/:id (Update) file: server/index.js
+ *  TODO 5 — PUT /api/songs/:id (Update) file: server/server.js
  *  =================================================================
  *  Goal:
  *    - Update an existing song by its ID.
  *    - Use Song.findByIdAndUpdate() with {new:true, runValidators:true}.
  *    - If not found → 404 {message:"Song not found"}.
  *
- *  Hint:
-      app.put("/api/songs/:id", async (req, res) => {
+ *  Syntax hint:
+      app.put("______________", async (req, res) => {
         try {
-          const updated = await Song.findByIdAndUpdate(
-            req.params.id,
-            req.body || {},
-            { new: true, runValidators: true, context: "query" }
+          const updated = await __________.findByIdAndUpdate(
+            __________,
+            __________ || {},
+            { new: _____, runValidators: _____, context: "________" }
           );
-          if (!updated) return res.status(404).json({ message: "Song not found" });
-          res.json(updated);
+          if (!updated) return res.status(___).json({ message: "______________" });
+          res.json(__________);
         } catch (err) {
-          res.status(400).json({ message: err.message || "Update failed" });
+          res.status(___).json({ message: err.message || "_____________" });
         }
       });
  */
 
 /** =================================================================
- *  TODO 6 — DELETE /api/songs/:id file: server/index.js
+ *  TODO 6 — DELETE /api/songs/:id file: server/server.js
  *  =================================================================
  *  Goal:
  *    - Delete a song from DB by its ID.
  *    - If not found → 404 {message:"Song not found"}.
  *    - On success → 204 No Content.
  *
- *  Hint:
-      app.delete("/api/songs/:id", async (req, res) => {
-        const deleted = await Song.findByIdAndDelete(req.params.id);
-        if (!deleted) return res.status(404).json({ message: "Song not found" });
-        res.status(204).end();
+ *  Syntax hint:
+      app.delete("______________", async (req, res) => {
+        const deleted = await __________.findByIdAndDelete(__________);
+        if (!deleted) return res.status(___).json({ message: "______________" });
+        res.status(___).end();
       });
  */
 
